@@ -156,4 +156,25 @@ assert_contains "$result" "Decision rule" "correct content restored"
 
 rm -rf "$tmp_home"
 
+test_case "full install runs all steps under a sandboxed HOME/PREFIX"
+tmp_home=$(make_tmp)
+tmp_prefix=$(make_tmp)
+HOME="$tmp_home" PREFIX="$tmp_prefix" bash install.sh
+assert_exit 0 $? "installer exits 0"
+[[ -x "$tmp_prefix/bin/safe-python" ]]  && assert_eq "ok" "ok" "safe-python placed"   || assert_eq "ok" "no" "safe-python missing"
+[[ -x "$tmp_prefix/bin/safe-python3" ]] && assert_eq "ok" "ok" "safe-python3 placed"  || assert_eq "ok" "no" "safe-python3 missing"
+[[ -x "$tmp_home/.claude/hooks/python-nudge.sh" ]] && assert_eq "ok" "ok" "hook placed" || assert_eq "ok" "no" "hook missing"
+assert_contains "$(cat "$tmp_home/.claude/settings.json")" "safe-python" "settings.json updated"
+assert_contains "$(cat "$tmp_home/.claude/CLAUDE.md")" "Python execution policy" "CLAUDE.md updated"
+
+test_case "full install is idempotent (second run zero errors, no dupes)"
+HOME="$tmp_home" PREFIX="$tmp_prefix" bash install.sh
+assert_exit 0 $? "second run exits 0"
+allow_count=$(jq '[.permissions.allow[] | select(. == "Bash(safe-python:*)")] | length' "$tmp_home/.claude/settings.json")
+assert_eq "1" "$allow_count" "no duplicate allow rule"
+md_count=$(grep -c "pupbox:python-policy:start" "$tmp_home/.claude/CLAUDE.md")
+assert_eq "1" "$md_count" "no duplicate policy block"
+
+rm -rf "$tmp_home" "$tmp_prefix"
+
 summary

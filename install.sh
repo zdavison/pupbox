@@ -211,6 +211,24 @@ PY
   echo "Updated: $md"
 }
 
+run_install() {
+  check_deps
+  install_bins
+  install_hook
+  merge_settings
+  upsert_claude_md
+
+  cat <<'EOF'
+
+pupbox installed.
+
+Quick test:
+  echo '<a href=x>' | safe-python -c 'import sys; print(sys.stdin.read())'
+
+Restart Claude Code (or run /config) to pick up the new hook and permissions.
+EOF
+}
+
 usage() {
   cat <<EOF
 Usage: bash install.sh [--uninstall] [--help]
@@ -231,7 +249,7 @@ main() {
   case "${1:-}" in
     --help|-h) usage; exit 0 ;;
     --uninstall) echo "uninstall not yet implemented"; exit 1 ;;
-    "") echo "install not yet implemented"; exit 1 ;;
+    "") run_install ;;
     *) usage; exit 2 ;;
   esac
 }
