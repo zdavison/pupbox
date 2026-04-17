@@ -6,7 +6,11 @@
       "Bash(git init *)",
       "Bash(git branch *)",
       "Bash(git add *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(cat)",
+      "Bash(bash /tmp/_pupbox_sanity.sh)",
+      "Bash(bash -n /home/z/Desktop/work/pupbox/tests/lib.sh)",
+      "Bash(echo \"cleanup: $?\")"
     ]
   }
 }
