@@ -10,7 +10,17 @@
       "Bash(cat)",
       "Bash(bash /tmp/_pupbox_sanity.sh)",
       "Bash(bash -n /home/z/Desktop/work/pupbox/tests/lib.sh)",
-      "Bash(echo \"cleanup: $?\")"
+      "Bash(echo \"cleanup: $?\")",
+      "Bash(bash /tmp/test_summary.sh)",
+      "Bash(echo \"Exit code from summary test: $?\")",
+      "Bash(bash /tmp/comprehensive_test.sh)",
+      "Bash(echo \"Exit code: $?\")",
+      "Bash(bash /tmp/final_test.sh)",
+      "Bash(echo \"Test script exit code: $?\")",
+      "Bash(bash /tmp/parent.sh)",
+      "Bash(bash *)",
+      "Bash(chmod +x /home/z/Desktop/work/pupbox/bin/safe-python)",
+      "Bash(xxd)"
     ]
   }
 }
