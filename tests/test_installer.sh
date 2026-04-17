@@ -177,4 +177,21 @@ assert_eq "1" "$md_count" "no duplicate policy block"
 
 rm -rf "$tmp_home" "$tmp_prefix"
 
+test_case "--uninstall removes binaries, hook, settings entries, and CLAUDE.md block"
+tmp_home=$(make_tmp)
+tmp_prefix=$(make_tmp)
+HOME="$tmp_home" PREFIX="$tmp_prefix" bash install.sh >/dev/null
+HOME="$tmp_home" PREFIX="$tmp_prefix" bash install.sh --uninstall
+assert_exit 0 $? "uninstall exits 0"
+[[ ! -e "$tmp_prefix/bin/safe-python" ]]  && assert_eq "ok" "ok" "safe-python removed"   || assert_eq "ok" "no" "safe-python still present"
+[[ ! -e "$tmp_prefix/bin/safe-python3" ]] && assert_eq "ok" "ok" "safe-python3 removed"  || assert_eq "ok" "no" "safe-python3 still present"
+[[ ! -e "$tmp_home/.claude/hooks/python-nudge.sh" ]] && assert_eq "ok" "ok" "hook removed" || assert_eq "ok" "no" "hook still present"
+settings=$(cat "$tmp_home/.claude/settings.json")
+assert_not_contains "$settings" "safe-python" "allow rules removed"
+assert_not_contains "$settings" "python-nudge.sh" "hook registration removed"
+md=$(cat "$tmp_home/.claude/CLAUDE.md")
+assert_not_contains "$md" "pupbox:python-policy:start" "policy block removed"
+
+rm -rf "$tmp_home" "$tmp_prefix"
+
 summary

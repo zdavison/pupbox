@@ -245,10 +245,60 @@ Env:
 EOF
 }
 
+run_uninstall() {
+  local prefix="${PREFIX:-/usr/local}"
+  local bindir="$prefix/bin"
+
+  for f in safe-python safe-python3; do
+    if [[ -e "$bindir/$f" || -L "$bindir/$f" ]]; then
+      _maybe_sudo "$bindir/$f" rm -f "$bindir/$f"
+      echo "Removed: $bindir/$f"
+    fi
+  done
+
+  local hook="$HOME/.claude/hooks/python-nudge.sh"
+  [[ -e "$hook" ]] && { rm -f "$hook"; echo "Removed: $hook"; }
+
+  local settings="$HOME/.claude/settings.json"
+  if [[ -f "$settings" ]]; then
+    jq '
+      if .permissions.allow then
+        .permissions.allow |= map(select(. != "Bash(safe-python:*)" and . != "Bash(safe-python3:*)"))
+      else . end
+      | if .hooks.PreToolUse then
+          .hooks.PreToolUse |= map(select(
+            [.hooks[]?.command] | all(. != "$HOME/.claude/hooks/python-nudge.sh")
+          ))
+        else . end
+    ' "$settings" > "$settings.tmp" && mv "$settings.tmp" "$settings"
+    echo "Cleaned: $settings"
+  fi
+
+  local md="$HOME/.claude/CLAUDE.md"
+  if [[ -f "$md" ]]; then
+    python3 - "$md" <<'PY'
+import re, sys
+path = sys.argv[1]
+with open(path) as f:
+    s = f.read()
+s = re.sub(
+    r'<!-- pupbox:python-policy:start -->.*?<!-- pupbox:python-policy:end -->\n?',
+    '', s, flags=re.DOTALL)
+s = s.rstrip() + ('\n' if s.strip() else '')
+with open(path, 'w') as f:
+    f.write(s)
+PY
+    echo "Cleaned: $md"
+  fi
+
+  echo
+  echo "pupbox uninstalled. (Backup at $settings.bak remains if you want to restore.)"
+}
+
 main() {
   case "${1:-}" in
     --help|-h) usage; exit 0 ;;
-    --uninstall) echo "uninstall not yet implemented"; exit 1 ;;
+    --uninstall) run_uninstall ;;
     "") run_install ;;
     *) usage; exit 2 ;;
   esac
