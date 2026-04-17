@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pupbox installer: safe-python + Claude Code integration.
+# safe-python installer: sandboxed python3 + Claude Code integration.
 #
 # Usage:
 #   curl -fsSL <url>/install.sh | bash
@@ -17,7 +17,7 @@ set -euo pipefail
 # via tests/test_installer.sh).
 # -----------------------------------------------------------------------------
 
-read -r -d '' SAFE_PYTHON_SCRIPT <<'PUPBOX_EOF' || true
+read -r -d '' SAFE_PYTHON_SCRIPT <<'SP_EOF' || true
 #!/usr/bin/env bash
 # safe-python: /usr/bin/python3 sandboxed.
 # - read-only view of the filesystem, no writes outside allowed /dev sinks
@@ -60,10 +60,10 @@ exec bwrap \
   --die-with-parent \
   --new-session \
   /usr/bin/python3 "$@"
-PUPBOX_EOF
+SP_EOF
 SAFE_PYTHON_SCRIPT+=$'\n'
 
-read -r -d '' PYTHON_NUDGE_SCRIPT <<'PUPBOX_EOF' || true
+read -r -d '' PYTHON_NUDGE_SCRIPT <<'SP_EOF' || true
 #!/usr/bin/env bash
 # PreToolUse hook: nudge Claude toward safe-python when it tries to run raw python/python3.
 # - permissionDecisionReason is shown to the *user* in the approval prompt.
@@ -87,7 +87,7 @@ if echo "$cmd" | grep -qE '(^|[|&;`]|\$\()[[:space:]]*python3?([[:space:]]|$)'; 
   }'
 fi
 exit 0
-PUPBOX_EOF
+SP_EOF
 PYTHON_NUDGE_SCRIPT+=$'\n'
 
 # -----------------------------------------------------------------------------
@@ -207,7 +207,7 @@ upsert_claude_md() {
 
   local block
   block=$(cat <<'MD'
-<!-- pupbox:python-policy:start -->
+<!-- safe-python:policy:start -->
 ## Python execution policy
 
 - **Default: `safe-python` / `safe-python3`** for text processing in pipelines
@@ -219,20 +219,25 @@ upsert_claude_md() {
 
 Decision rule: if the Python code reads stdin and prints to stdout with no
 side effects, use `safe-python`. Otherwise `python3`.
-<!-- pupbox:python-policy:end -->
+<!-- safe-python:policy:end -->
 MD
   )
 
-  # Strip any existing delimited block, then append a fresh one.
+  # Strip any existing delimited block (current marker *and* the legacy
+  # pupbox:python-policy marker from pre-rename installs), then append fresh.
   local cleaned
   cleaned=$(python3 - "$md" <<'PY'
 import re, sys
 path = sys.argv[1]
 with open(path) as f:
     s = f.read()
-s = re.sub(
-    r'<!-- pupbox:python-policy:start -->.*?<!-- pupbox:python-policy:end -->\n?',
-    '', s, flags=re.DOTALL)
+for start, end in (
+    ('safe-python:policy:start', 'safe-python:policy:end'),
+    ('pupbox:python-policy:start', 'pupbox:python-policy:end'),
+):
+    s = re.sub(
+        rf'<!-- {start} -->.*?<!-- {end} -->\n?',
+        '', s, flags=re.DOTALL)
 # Trim trailing blank lines so we don't keep accumulating them.
 s = s.rstrip() + ('\n' if s.strip() else '')
 sys.stdout.write(s)
@@ -256,7 +261,7 @@ run_install() {
 
   cat <<'EOF'
 
-pupbox installed.
+safe-python installed.
 
 Quick test:
   echo '<a href=x>' | safe-python -c 'import sys; print(sys.stdin.read())'
@@ -317,9 +322,15 @@ import re, sys
 path = sys.argv[1]
 with open(path) as f:
     s = f.read()
-s = re.sub(
-    r'<!-- pupbox:python-policy:start -->.*?<!-- pupbox:python-policy:end -->\n?',
-    '', s, flags=re.DOTALL)
+# Strip both the current marker and the legacy pupbox:python-policy marker
+# so uninstall is clean whether the user last installed pre- or post-rename.
+for start, end in (
+    ('safe-python:policy:start', 'safe-python:policy:end'),
+    ('pupbox:python-policy:start', 'pupbox:python-policy:end'),
+):
+    s = re.sub(
+        rf'<!-- {start} -->.*?<!-- {end} -->\n?',
+        '', s, flags=re.DOTALL)
 s = s.rstrip() + ('\n' if s.strip() else '')
 with open(path, 'w') as f:
     f.write(s)
@@ -328,7 +339,7 @@ PY
   fi
 
   echo
-  echo "pupbox uninstalled. (Backup at $settings.bak remains if you want to restore.)"
+  echo "safe-python uninstalled. (Backup at $settings.bak remains if you want to restore.)"
 }
 
 main() {
@@ -340,7 +351,8 @@ main() {
   esac
 }
 
-# If sourced by the test harness (PUPBOX_LIB_ONLY=1), stop after defining vars.
-if [[ -z "${PUPBOX_LIB_ONLY:-}" ]]; then
+# If sourced by the test harness (SAFE_PYTHON_LIB_ONLY=1), stop after defining vars
+# — this is how tests call individual functions with overridden HOME/PREFIX.
+if [[ -z "${SAFE_PYTHON_LIB_ONLY:-}" ]]; then
   main "$@"
 fi

@@ -67,6 +67,6 @@ summary() {
 
 make_tmp() {
   local dir
-  dir=$(mktemp -d -t pupbox-test.XXXXXX)
+  dir=$(mktemp -d -t safe-python-test.XXXXXX)
   echo "$dir"
 }

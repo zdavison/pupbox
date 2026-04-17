@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-pupbox ships `safe-python` — a sandboxed wrapper around `/usr/bin/python3` — plus a Claude Code integration that pre-approves it and nudges Claude away from raw `python3`. Supported on **Linux** (via `bwrap`) and **macOS** (via `sandbox-exec`). The full test suite passes on both.
+This repo ships `safe-python` — a sandboxed wrapper around `/usr/bin/python3` — plus a Claude Code integration that pre-approves it and nudges Claude away from raw `python3`. Supported on **Linux** (via `bwrap`) and **macOS** (via `sandbox-exec`). The full test suite passes on both.
 
 ## Common commands
 
@@ -31,7 +31,7 @@ Three user-visible artifacts, plus an installer that stitches them into Claude C
 ### Two non-obvious invariants
 
 - **`install.sh` embeds byte-identical copies of `bin/safe-python` and `hooks/python-nudge.sh` as heredoc strings** (`SAFE_PYTHON_SCRIPT`, `PYTHON_NUDGE_SCRIPT`). This is what makes `curl | bash` work with no other files. `tests/test_installer.sh` fails if the embedded copies diverge from the source files — **edit both when changing either.**
-- **Every installer step must be idempotent and reversible.** `merge_settings` dedupes by structural equality (allow list + PreToolUse hook block). `upsert_claude_md` strips anything between `<!-- pupbox:python-policy:start -->` / `:end -->` markers before re-writing. `--uninstall` must leave settings.json and CLAUDE.md clean. Tests enforce all of this.
+- **Every installer step must be idempotent and reversible.** `merge_settings` dedupes by structural equality (allow list + PreToolUse hook block). `upsert_claude_md` strips anything between `<!-- safe-python:policy:start -->` / `:end -->` markers before re-writing — and *also* strips the legacy `pupbox:python-policy` markers so pre-rename installs upgrade cleanly. `--uninstall` must leave settings.json and CLAUDE.md clean (for both marker variants). Tests enforce all of this.
 
 ### Installer library mode
 

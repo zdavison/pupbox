@@ -1,4 +1,4 @@
-# pupbox — safe-python for Claude Code
+# safe-python
 
 A sandboxed Python wrapper that Claude Code can invoke freely as a text
 processor without permission prompts. Runs `/usr/bin/python3` with:
@@ -16,7 +16,7 @@ Real `python3` still works — it just prompts with a reminder to prefer
 
 ## Install
 
-    curl -fsSL https://raw.githubusercontent.com/zdavison/pupbox/main/install.sh | bash
+    curl -fsSL https://raw.githubusercontent.com/zdavison/safe-python/main/install.sh | bash
 
 Or, if you've cloned the repo:
 

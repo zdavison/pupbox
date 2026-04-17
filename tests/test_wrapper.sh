@@ -22,7 +22,7 @@ assert_contains "$result" "BLOCKED" "network must be blocked"
 assert_not_contains "$result" "UNEXPECTED_SUCCESS" "connect must not succeed"
 
 test_case "wrapper cannot write outside the sandbox"
-marker="/tmp/pupbox-wrapper-test-$$.marker"
+marker="/tmp/safe-python-wrapper-test-$$.marker"
 rm -f "$marker"
 bash "$WRAPPER" -c "open('$marker', 'w').write('x')" 2>/dev/null || true
 if [[ -e "$marker" ]]; then
