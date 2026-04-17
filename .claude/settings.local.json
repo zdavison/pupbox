@@ -21,7 +21,13 @@
       "Bash(bash *)",
       "Bash(chmod +x /home/z/Desktop/work/pupbox/bin/safe-python)",
       "Bash(xxd)",
-      "Bash(chmod +x *)"
+      "Bash(chmod +x *)",
+      "Bash(PUPBOX_LIB_ONLY=1 bash *)",
+      "Bash(echo \"EXIT CODE: $?\")",
+      "Bash(echo \"exit code: $?\")",
+      "Bash(echo \"help exit: $?\")",
+      "Bash(echo \"help -h exit: $?\")",
+      "Bash(echo \"invalid flag exits: $?\")"
     ]
   }
 }
