@@ -113,4 +113,47 @@ assert_eq "99" "$bak_v" "second run must not overwrite .bak"
 
 rm -rf "$tmp_home"
 
+test_case "upsert_claude_md adds policy block to empty file"
+tmp_home=$(make_tmp)
+mkdir -p "$tmp_home/.claude"
+: > "$tmp_home/.claude/CLAUDE.md"
+PUPBOX_LIB_ONLY=1 bash -c "source install.sh; HOME='$tmp_home' upsert_claude_md"
+result=$(cat "$tmp_home/.claude/CLAUDE.md")
+assert_contains "$result" "pupbox:python-policy:start" "start marker"
+assert_contains "$result" "pupbox:python-policy:end" "end marker"
+assert_contains "$result" "safe-python" "block content present"
+
+test_case "upsert_claude_md preserves existing unrelated content"
+cat > "$tmp_home/.claude/CLAUDE.md" <<'MD'
+# My personal prefs
+
+- never use emojis
+MD
+PUPBOX_LIB_ONLY=1 bash -c "source install.sh; HOME='$tmp_home' upsert_claude_md"
+result=$(cat "$tmp_home/.claude/CLAUDE.md")
+assert_contains "$result" "never use emojis" "original content preserved"
+assert_contains "$result" "Python execution policy" "policy added"
+
+test_case "upsert_claude_md is idempotent"
+PUPBOX_LIB_ONLY=1 bash -c "source install.sh; HOME='$tmp_home' upsert_claude_md"
+result=$(cat "$tmp_home/.claude/CLAUDE.md")
+count=$(grep -c "pupbox:python-policy:start" <<< "$result")
+assert_eq "1" "$count" "policy block not duplicated"
+
+test_case "upsert_claude_md replaces old content inside markers"
+python3 -c "
+import re
+p = '$tmp_home/.claude/CLAUDE.md'
+with open(p) as f: s = f.read()
+s = re.sub(r'(pupbox:python-policy:start -->).*?(<!-- pupbox:python-policy:end)',
+          r'\1\nCORRUPTED\n\2', s, flags=re.DOTALL)
+with open(p, 'w') as f: f.write(s)
+"
+PUPBOX_LIB_ONLY=1 bash -c "source install.sh; HOME='$tmp_home' upsert_claude_md"
+result=$(cat "$tmp_home/.claude/CLAUDE.md")
+assert_not_contains "$result" "CORRUPTED" "corrupted content replaced"
+assert_contains "$result" "Decision rule" "correct content restored"
+
+rm -rf "$tmp_home"
+
 summary

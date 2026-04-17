@@ -164,6 +164,53 @@ JSON
   echo "Merged into: $settings"
 }
 
+upsert_claude_md() {
+  local md="$HOME/.claude/CLAUDE.md"
+  mkdir -p "$HOME/.claude"
+  [[ -f "$md" ]] || : > "$md"
+
+  local block
+  block=$(cat <<'MD'
+<!-- pupbox:python-policy:start -->
+## Python execution policy
+
+- **Default: `safe-python` / `safe-python3`** for text processing in pipelines
+  (e.g. `pup ... | safe-python -c '...'`). Pre-approved, no prompt. Read-only
+  filesystem, no network — ideal for parsing/transforming stdin to stdout.
+- **Escape hatch: `python3`** when you actually need network, file writes,
+  subprocess, or real project scripts/tests. Will prompt with a reminder;
+  confirm when the need is real.
+
+Decision rule: if the Python code reads stdin and prints to stdout with no
+side effects, use `safe-python`. Otherwise `python3`.
+<!-- pupbox:python-policy:end -->
+MD
+  )
+
+  # Strip any existing delimited block, then append a fresh one.
+  local cleaned
+  cleaned=$(python3 - "$md" <<'PY'
+import re, sys
+path = sys.argv[1]
+with open(path) as f:
+    s = f.read()
+s = re.sub(
+    r'<!-- pupbox:python-policy:start -->.*?<!-- pupbox:python-policy:end -->\n?',
+    '', s, flags=re.DOTALL)
+# Trim trailing blank lines so we don't keep accumulating them.
+s = s.rstrip() + ('\n' if s.strip() else '')
+sys.stdout.write(s)
+PY
+  )
+
+  {
+    printf '%s' "$cleaned"
+    [[ -n "$cleaned" ]] && printf '\n'
+    printf '%s\n' "$block"
+  } > "$md"
+  echo "Updated: $md"
+}
+
 usage() {
   cat <<EOF
 Usage: bash install.sh [--uninstall] [--help]
