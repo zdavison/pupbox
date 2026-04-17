@@ -20,7 +20,8 @@
       "Bash(bash /tmp/parent.sh)",
       "Bash(bash *)",
       "Bash(chmod +x /home/z/Desktop/work/pupbox/bin/safe-python)",
-      "Bash(xxd)"
+      "Bash(xxd)",
+      "Bash(chmod +x *)"
     ]
   }
 }
