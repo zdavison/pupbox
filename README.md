@@ -13,7 +13,7 @@ Real `python3` still works — it just prompts with a reminder to prefer
 
 ## Install
 
-    curl -fsSL https://raw.githubusercontent.com/<you>/pupbox/main/install.sh | bash
+    curl -fsSL https://raw.githubusercontent.com/zdavison/pupbox/main/install.sh | bash
 
 Or, if you've cloned the repo:
 
