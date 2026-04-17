@@ -24,4 +24,13 @@ out=$(bash install.sh --help 2>&1)
 assert_contains "$out" "Usage:" "help output mentions Usage"
 assert_contains "$out" "--uninstall" "help mentions --uninstall"
 
+test_case "check_deps passes when all tools present"
+out=$(PUPBOX_LIB_ONLY=1 bash -c 'source install.sh; check_deps' 2>&1)
+assert_exit 0 $? "check_deps exits 0 when tools present"
+
+test_case "check_deps fails with helpful message when a tool is missing"
+out=$(PUPBOX_LIB_ONLY=1 bash -c 'source install.sh; PATH=/nonexistent check_deps' 2>&1 || true)
+assert_contains "$out" "bwrap" "message mentions bwrap"
+assert_contains "$out" "apt" "message includes apt hint"
+
 summary

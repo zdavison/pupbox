@@ -65,6 +65,19 @@ PYTHON_NUDGE_SCRIPT+=$'\n'
 # CLI
 # -----------------------------------------------------------------------------
 
+check_deps() {
+  local missing=()
+  for tool in bwrap jq python3; do
+    command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
+  done
+  if (( ${#missing[@]} > 0 )); then
+    echo "Missing required tools: ${missing[*]}" >&2
+    echo "On Debian/Ubuntu: sudo apt install bubblewrap jq python3" >&2
+    return 1
+  fi
+  return 0
+}
+
 usage() {
   cat <<EOF
 Usage: bash install.sh [--uninstall] [--help]
