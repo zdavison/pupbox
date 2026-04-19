@@ -16,9 +16,11 @@ EOF
 
 run_hook() {
   local cmd="$1"
-  JAILED_CONFIG="$CFG" printf '%s' \
-    "{\"tool_input\":{\"command\":$(jq -Rn --arg c "$cmd" '$c')}}" \
-    | bash "$HOOK"
+  # JAILED_CONFIG goes on the consuming side of the pipe so it's visible
+  # to the hook — a bare `JAILED_CONFIG=… printf | bash hook` would only
+  # scope the env var to printf and the hook would fall back to defaults.
+  printf '%s' "{\"tool_input\":{\"command\":$(jq -Rn --arg c "$cmd" '$c')}}" \
+    | JAILED_CONFIG="$CFG" bash "$HOOK"
 }
 
 # ---- Rewrite happy paths ----
@@ -39,7 +41,8 @@ assert_contains "$out" "mkdir -p out && jailed python3 script.py" "rewrite handl
 
 test_case "rewrites python3 inside \$( … )"
 out=$(run_hook 'result=$(python3 -c "print(1)")')
-assert_contains "$out" 'result=$(jailed python3 -c "print(1)")' "rewrite handles subshell"
+# Interior double quotes are JSON-escaped in the hook's stdout.
+assert_contains "$out" 'result=$(jailed python3 -c \"print(1)\")' "rewrite handles subshell"
 
 test_case "rewrites multiple occurrences"
 out=$(run_hook "python3 a.py && python3 b.py")
@@ -76,19 +79,19 @@ assert_eq "" "$out" "must respect word boundary, not substring"
 # ---- Config semantics ----
 
 test_case "falls back to built-in defaults when no config file is set"
-out=$(JAILED_CONFIG=/nonexistent/path printf '%s' \
-  "{\"tool_input\":{\"command\":\"python3 -c 1\"}}" | bash "$HOOK")
+out=$(printf '%s' \
+  "{\"tool_input\":{\"command\":\"python3 -c 1\"}}" | JAILED_CONFIG=/nonexistent/path bash "$HOOK")
 assert_contains "$out" "jailed python3 -c 1" "built-in defaults still catch python3"
 
 test_case "user can narrow the list by editing the config"
 narrow_cfg="$CFG_DIR/narrow"
 printf 'jq\n' > "$narrow_cfg"
-out=$(JAILED_CONFIG="$narrow_cfg" printf '%s' \
-  "{\"tool_input\":{\"command\":\"python3 -c 1\"}}" | bash "$HOOK")
+out=$(printf '%s' \
+  "{\"tool_input\":{\"command\":\"python3 -c 1\"}}" | JAILED_CONFIG="$narrow_cfg" bash "$HOOK")
 assert_eq "" "$out" "python3 no longer rewritten when removed from config"
 
-out=$(JAILED_CONFIG="$narrow_cfg" printf '%s' \
-  "{\"tool_input\":{\"command\":\"cat | jq .\"}}" | bash "$HOOK")
+out=$(printf '%s' \
+  "{\"tool_input\":{\"command\":\"cat | jq .\"}}" | JAILED_CONFIG="$narrow_cfg" bash "$HOOK")
 assert_contains "$out" "cat | jailed jq ." "jq still rewritten (still in config)"
 
 test_case "additionalContext is included so Claude sees why"
