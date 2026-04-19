@@ -555,6 +555,7 @@ run_install() {
   local cfg="$HOME/.config/jailed/commands"
   echo
   echo "jailed installed."
+  echo "unjailed installed."
   echo
   echo "Claude's calls to these commands will be transparently sandboxed:"
   # Indent each live entry for readability. grep -v strips comments/blanks.
@@ -568,6 +569,9 @@ run_install() {
   echo
   echo "Quick test:"
   echo "  echo '<a href=x>' | jailed python3 -c 'import sys; print(sys.stdin.read())'"
+  echo
+  echo "Need Claude to run un-sandboxed for a session (network, writes)?"
+  echo "  unjailed claude"
   echo
   echo "Restart Claude Code (or run /config) to pick up the new hook and permissions."
 }
