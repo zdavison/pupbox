@@ -1,61 +1,84 @@
-# jailed-python
+# jailed
 
-A sandboxed Python wrapper that Claude Code can invoke freely as a text
-processor without permission prompts. Runs `/usr/bin/python3` with:
+A generic command sandbox plus a Claude Code integration that routes
+listed commands (e.g. `python3`, `jq`, `awk`) through it transparently.
+When Claude proposes `python3 -c '…'`, a PreToolUse hook rewrites the
+tool input to `jailed python3 -c '…'` before Bash executes — no approval
+prompt, no retries, no side effects.
+
+## What `jailed` does
+
+Invoked as `jailed <cmd> [args…]`. Runs the target command under
+[Anthropic Sandbox Runtime](https://github.com/anthropic-experimental/sandbox-runtime)
+(`srt`) with a deny-all policy:
 
 - **no network**
-- **read-only filesystem** (writes outside `/dev/null` and std streams fail)
+- **no filesystem writes** (reads are allowed; writes to `/dev/null` and std streams still work)
 
-Under the hood:
-
-- **Linux:** [bubblewrap](https://github.com/containers/bubblewrap) — `--unshare-all`, `--ro-bind / /`, ephemeral tmpfs for `$HOME`, `/tmp`, `/run`.
-- **macOS:** `sandbox-exec` with a Seatbelt profile that denies `network*` and `file-write*` (except `/dev` sinks). No tmpfs on Darwin, so writes fail outright rather than landing ephemerally — same no-side-effects contract.
-
-Real `python3` still works — it just prompts with a reminder to prefer
-`jailed-python` unless you truly need network, file writes, or subprocess.
+SRT abstracts the platform sandbox primitive — `bubblewrap` on Linux,
+`sandbox-exec` on macOS — so the same `jailed <cmd>` contract holds on
+both OSes. We configure SRT; we don't re-implement the sandbox.
 
 ## Install
 
-    curl -fsSL https://raw.githubusercontent.com/zdavison/jailed-python/main/install.sh | bash
+    curl -fsSL https://raw.githubusercontent.com/zdavison/jailed/main/install.sh | bash
 
 Or, if you've cloned the repo:
 
     bash install.sh
 
-Requires `jq` and `python3`, plus the platform sandbox primitive:
+Requires `jq` and `python3`. The installer will `npm install -g @anthropic-ai/sandbox-runtime`
+automatically if `srt` isn't already on your PATH (needs Node.js + npm).
 
-- **Linux:** `bwrap` — `sudo apt install bubblewrap jq python3`
-- **macOS:** `sandbox-exec` ships with the OS; `brew install jq python` if missing. Xcode Command Line Tools are required so `/usr/bin/python3` is functional (`xcode-select --install`).
+- **Linux:** `sudo apt install jq python3`, plus Node.js from whatever source you prefer.
+- **macOS:** `brew install jq python` (plus Xcode Command Line Tools so `/usr/bin/python3` resolves). Node.js via `brew install node` or nvm.
 
-## What it changes
+## What the installer does
 
-- Drops `jailed-python` and `jailed-python3` into `/usr/local/bin/` (one `sudo` prompt).
-- Writes `~/.claude/hooks/python-nudge.sh`.
-- Merges into `~/.claude/settings.json`:
-  - `permissions.allow` gains `Bash(jailed-python:*)` and `Bash(jailed-python3:*)`.
-  - `hooks.PreToolUse` gains a Bash-matcher hook that runs `python-nudge.sh`.
-- Upserts a `## Python execution policy` section (delimited by HTML comment
-  markers) in `~/.claude/CLAUDE.md`.
+- Drops `jailed`, `jailed-python`, `jailed-python3` into `$PREFIX/bin/` (one `sudo` prompt). `jailed-python*` are convenience shims for `jailed python3`.
+- Writes `~/.claude/hooks/jailed-hook.sh` (the rewriting PreToolUse hook).
+- Writes `~/.config/jailed/commands` **only if absent** — the default list of commands to auto-jail. Your edits survive re-installs.
+- Writes `~/.config/jailed/srt-settings.json` **only if absent** — SRT's policy file (deny-all by default).
+- Merges into `~/.claude/settings.json`: `permissions.allow` gains `Bash(jailed:*)`, `Bash(jailed-python:*)`, `Bash(jailed-python3:*)`; `hooks.PreToolUse` gains a Bash-matcher hook that runs `jailed-hook.sh`.
 
-Original `settings.json` is backed up to `settings.json.bak` on first run.
-If you previously installed under the `safe-python` name, upgrading to this
-version automatically removes the legacy binaries, allow rules, and policy
-block — no manual cleanup needed.
+Original `settings.json` is backed up to `settings.json.bak` on first run. If you previously installed under the `safe-python` or `pupbox` names, upgrading removes all legacy binaries, allow rules, hook registrations, and policy-block markers automatically.
+
+## Configure
+
+**`~/.config/jailed/commands`** — one command per line, `#` for comments. Claude's calls to any listed command get rewritten to `jailed <cmd> …` transparently. Defaults:
+
+```
+python
+python3
+jq
+awk
+sed
+grep
+```
+
+Edit freely. Add `ripgrep`, `yq`, or whatever else you want auto-sandboxed. Remove anything you want to run unfettered.
+
+**`~/.config/jailed/srt-settings.json`** — the SRT policy file. Default is
+deny-all (empty `allowWrite`, empty `allowedDomains`). See the
+[SRT docs](https://github.com/anthropic-experimental/sandbox-runtime#configuration)
+if you want to allow specific domains or write paths.
 
 ## Uninstall
 
     bash install.sh --uninstall
 
+Removes binaries, hook, and allow rules / hook registration from `settings.json` (current + all legacy generations). Leaves `~/.config/jailed/` in place (it's user data). SRT itself (the npm package) is left alone.
+
 ## Verify
 
-    echo '<a href=x>' | jailed-python -c '
-    import sys, re
-    print(re.search(r"href=(\S+?)>", sys.stdin.read()).group(1))
-    '
-    # -> x
+    jailed python3 -c 'print("hello")'
+    # -> hello
 
-    jailed-python -c 'import socket; socket.socket().connect(("1.1.1.1", 80))'
+    jailed python3 -c 'import socket; socket.socket().connect(("1.1.1.1", 80))'
     # -> PermissionError / BlockingIOError
+
+    jailed jq -n '{"ok": 1}'
+    # -> {"ok": 1}
 
 ## Development
 
@@ -63,8 +86,6 @@ block — no manual cleanup needed.
 
 ## Known issues
 
-**Ubuntu 24.04+:** AppArmor restricts unprivileged user namespaces so `bwrap` may fail with `setting up uid map`. Fix:
+**Rewrite limitations:** the hook uses regex at shell-token boundaries. It does *not* rewrite `env FOO=bar python3 …` (command is not at a boundary) or occurrences embedded in single-quoted strings that themselves contain shell separators (e.g. `echo ';python3'`). Both edge cases are rare in Claude's typical usage; workaround is to invoke `jailed <cmd>` directly, or remove the command from `~/.config/jailed/commands`.
 
-    sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0
-
-**macOS:** `sandbox-exec` is officially deprecated by Apple (and still ubiquitous — WebKit, Chromium, and the OS itself use it). It prints no warning on invocation, but future macOS versions may remove it. If that happens, the sibling tool [`anthropic-experimental/sandbox-runtime`](https://github.com/anthropic-experimental/sandbox-runtime) is a drop-in with domain-allowlist support.
+**SRT is a research preview.** API and config format may evolve. If SRT goes away, we can swap the wrapper for another backend without changing the hook or Claude-facing surface.
