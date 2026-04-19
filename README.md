@@ -1,3 +1,5 @@
+<img width="1024" height="1024" alt="image" src="https://github.com/user-attachments/assets/6ee10a7b-576b-4e9d-9891-92155a119af6" />
+
 # jailed
 
 A simple command sandbox, just prefix with `jailed` to sandbox.
