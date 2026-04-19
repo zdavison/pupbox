@@ -72,6 +72,33 @@ exec srt -s "$settings" -c "$escaped"
 JP_EOF
 JAILED_SCRIPT+=$'\n'
 
+read -r -d '' UNJAILED_SCRIPT <<'JP_EOF' || true
+#!/usr/bin/env bash
+# unjailed: run a command with UNJAILED=1 in its env.
+# The jailed-hook's default behavior is to rewrite listed commands to run
+# through the `jailed` sandbox. When Claude Code is launched as
+# `unjailed claude`, the hook sees UNJAILED=1 in its inherited env and,
+# after validating via a process-ancestry check that the value was set by
+# this wrapper (and not spoofed by a jailed Claude), stands down — so the
+# user gets normal permission prompts and unsandboxed execution.
+#
+# For any non-`claude` target this wrapper is a harmless no-op: nothing
+# else on the system reads UNJAILED.
+#
+# Trust model: see docs/superpowers/specs/2026-04-19-unjailed-command-design.md.
+
+set -u
+
+if (( $# == 0 )); then
+  echo "usage: unjailed <cmd> [args...]" >&2
+  exit 2
+fi
+
+export UNJAILED=1
+exec "$@"
+JP_EOF
+UNJAILED_SCRIPT+=$'\n'
+
 read -r -d '' JAILED_HOOK_SCRIPT <<'JP_EOF' || true
 #!/usr/bin/env bash
 # PreToolUse hook: transparently wrap commands in `jailed` before Bash runs them.
@@ -379,6 +406,11 @@ install_bins() {
   _maybe_sudo "$jailed_target" chmod 755 "$jailed_target"
 
   echo "Installed: $jailed_target"
+
+  local unjailed_target="$bindir/unjailed"
+  printf '%s\n' "$UNJAILED_SCRIPT" | _maybe_sudo "$unjailed_target" tee "$unjailed_target" >/dev/null
+  _maybe_sudo "$unjailed_target" chmod 755 "$unjailed_target"
+  echo "Installed: $unjailed_target"
 }
 
 install_hook() {
@@ -559,7 +591,7 @@ run_uninstall() {
   local bindir="$prefix/bin"
 
   # Remove current and all legacy-generation binaries.
-  for f in jailed jailed-python jailed-python3 safe-python safe-python3; do
+  for f in jailed unjailed jailed-python jailed-python3 safe-python safe-python3; do
     if [[ -e "$bindir/$f" || -L "$bindir/$f" ]]; then
       _maybe_sudo "$bindir/$f" rm -f "$bindir/$f"
       echo "Removed: $bindir/$f"

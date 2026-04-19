@@ -16,6 +16,11 @@ embedded=$(JAILED_PYTHON_LIB_ONLY=1 bash -c 'source install.sh; printf "%s" "$JA
 actual=$(cat bin/jailed)
 assert_eq "$actual" "$embedded" "embedded jailed diverged from bin/jailed"
 
+test_case "embedded UNJAILED_SCRIPT matches bin/unjailed"
+embedded=$(JAILED_PYTHON_LIB_ONLY=1 bash -c 'source install.sh; printf "%s" "$UNJAILED_SCRIPT"')
+actual=$(cat bin/unjailed)
+assert_eq "$actual" "$embedded" "embedded unjailed diverged from bin/unjailed"
+
 test_case "embedded JAILED_HOOK_SCRIPT matches hooks/jailed-hook.sh"
 embedded=$(JAILED_PYTHON_LIB_ONLY=1 bash -c 'source install.sh; printf "%s" "$JAILED_HOOK_SCRIPT"')
 actual=$(cat hooks/jailed-hook.sh)
@@ -56,6 +61,8 @@ tmp=$(make_tmp)
 JAILED_PYTHON_LIB_ONLY=1 bash -c "source install.sh; PREFIX='$tmp' install_bins"
 [[ -x "$tmp/bin/jailed" ]] && assert_eq "ok" "ok" "jailed installed and executable" \
   || assert_eq "ok" "missing" "jailed not executable or missing"
+[[ -x "$tmp/bin/unjailed" ]] && assert_eq "ok" "ok" "unjailed installed and executable" \
+  || assert_eq "ok" "missing" "unjailed not executable or missing"
 
 test_case "installed jailed actually runs"
 # install_bins places binaries; SRT settings are a separate step, so pass
@@ -80,6 +87,8 @@ JAILED_PYTHON_LIB_ONLY=1 bash -c "source install.sh; PREFIX='$tmp' install_bins"
   || assert_eq "ok" "present" "legacy safe-python3 not cleaned up"
 [[ -x "$tmp/bin/jailed" ]]  && assert_eq "ok" "ok" "jailed still in place" \
   || assert_eq "ok" "missing" "jailed missing after legacy cleanup"
+[[ -x "$tmp/bin/unjailed" ]] && assert_eq "ok" "ok" "unjailed still in place" \
+  || assert_eq "ok" "missing" "unjailed missing after legacy cleanup"
 
 rm -rf "$tmp"
 
@@ -296,6 +305,8 @@ HOME="$tmp_home" PREFIX="$tmp_prefix" bash install.sh --uninstall
 assert_exit 0 $? "uninstall exits 0"
 [[ ! -e "$tmp_prefix/bin/jailed" ]] && assert_eq "ok" "ok" "jailed removed" \
   || assert_eq "ok" "no" "jailed still present"
+[[ ! -e "$tmp_prefix/bin/unjailed" ]] && assert_eq "ok" "ok" "unjailed removed" \
+  || assert_eq "ok" "no" "unjailed still present"
 [[ ! -e "$tmp_home/.claude/hooks/jailed-hook.sh" ]] && assert_eq "ok" "ok" "new hook removed" || assert_eq "ok" "no" "new hook still present"
 settings=$(cat "$tmp_home/.claude/settings.json")
 assert_not_contains "$settings" "Bash(jailed"   "jailed allow rules removed"
