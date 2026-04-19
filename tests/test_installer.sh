@@ -24,6 +24,11 @@ embedded=$(JAILED_PYTHON_LIB_ONLY=1 bash -c 'source install.sh; printf "%s" "$PY
 actual=$(cat hooks/python-nudge.sh)
 assert_eq "$actual" "$embedded" "embedded hook diverged from hooks/python-nudge.sh"
 
+test_case "embedded SRT_SETTINGS matches config/srt-settings.json"
+embedded=$(JAILED_PYTHON_LIB_ONLY=1 bash -c 'source install.sh; printf "%s" "$SRT_SETTINGS"')
+actual=$(cat config/srt-settings.json)
+assert_eq "$actual" "$embedded" "embedded SRT settings diverged from config/srt-settings.json"
+
 test_case "--help prints usage"
 out=$(bash install.sh --help 2>&1)
 assert_contains "$out" "Usage:" "help output mentions Usage"
@@ -35,8 +40,10 @@ assert_exit 0 $? "check_deps exits 0 when tools present"
 
 test_case "check_deps fails with helpful message when a tool is missing"
 out=$(JAILED_PYTHON_LIB_ONLY=1 bash -c 'source install.sh; PATH=/nonexistent check_deps' 2>&1 || true)
-assert_contains "$out" "bwrap" "message mentions bwrap"
-assert_contains "$out" "apt" "message includes apt hint"
+# With SRT replacing direct bwrap/sandbox-exec usage, the actionable
+# guidance points at @anthropic-ai/sandbox-runtime (not apt/bubblewrap).
+assert_contains "$out" "srt" "message mentions srt"
+assert_contains "$out" "sandbox-runtime" "message points at the npm package"
 
 test_case "install_bins places jailed, jailed-python and jailed-python3 under \$PREFIX/bin"
 tmp=$(make_tmp)
@@ -86,6 +93,26 @@ hook_path="$tmp_home/.claude/hooks/python-nudge.sh"
 test_case "installed hook emits ask JSON for python3"
 out=$(printf '%s' '{"tool_input":{"command":"python3 -c 1"}}' | "$hook_path")
 assert_contains "$out" '"permissionDecision": "ask"' "hook works end-to-end"
+
+rm -rf "$tmp_home"
+
+test_case "install_srt_settings writes default policy when absent"
+tmp_home=$(make_tmp)
+JAILED_PYTHON_LIB_ONLY=1 bash -c "source install.sh; HOME='$tmp_home' install_srt_settings"
+settings_path="$tmp_home/.config/jailed/srt-settings.json"
+[[ -f "$settings_path" ]] && assert_eq "ok" "ok" "settings installed" \
+  || assert_eq "ok" "missing" "settings missing"
+# Content must be valid JSON with the deny-all shape we ship.
+jq -e '.filesystem.allowWrite == [] and .network.allowedDomains == []' "$settings_path" >/dev/null 2>&1
+assert_exit 0 $? "default policy is deny-all (empty allow lists)"
+
+test_case "install_srt_settings preserves user-edited policy on second run"
+# User opens up one domain — installer must not clobber this.
+jq '.network.allowedDomains = ["example.com"]' "$settings_path" \
+  > "$settings_path.tmp" && mv "$settings_path.tmp" "$settings_path"
+JAILED_PYTHON_LIB_ONLY=1 bash -c "source install.sh; HOME='$tmp_home' install_srt_settings"
+result=$(jq -r '.network.allowedDomains[0]' "$settings_path")
+assert_eq "example.com" "$result" "user-edited policy survived re-install"
 
 rm -rf "$tmp_home"
 

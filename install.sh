@@ -99,24 +99,64 @@ exit 0
 JP_EOF
 PYTHON_NUDGE_SCRIPT+=$'\n'
 
+read -r -d '' SRT_SETTINGS <<'JP_EOF' || true
+{
+  "filesystem": {
+    "denyRead": [],
+    "allowWrite": [],
+    "denyWrite": []
+  },
+  "network": {
+    "allowedDomains": [],
+    "deniedDomains": []
+  }
+}
+JP_EOF
+SRT_SETTINGS+=$'\n'
+
 # -----------------------------------------------------------------------------
 # CLI
 # -----------------------------------------------------------------------------
 
 check_deps() {
   local missing=()
-  local sandbox_tool="bwrap"
-  [[ "$(uname 2>/dev/null)" == "Darwin" ]] && sandbox_tool="sandbox-exec"
+  # srt is provided by @anthropic-ai/sandbox-runtime — it abstracts the
+  # platform sandbox (bwrap on Linux, sandbox-exec on macOS) so we don't
+  # need either ourselves. If srt is missing but npm is present, bootstrap
+  # it automatically; otherwise fail with actionable guidance.
+  if ! command -v srt >/dev/null 2>&1; then
+    if command -v npm >/dev/null 2>&1; then
+      echo "srt (Anthropic Sandbox Runtime) not found — installing via npm..."
+      if ! npm install -g @anthropic-ai/sandbox-runtime; then
+        echo "npm install failed. Install manually:" >&2
+        echo "  npm install -g @anthropic-ai/sandbox-runtime" >&2
+        return 1
+      fi
+      # Re-check on PATH (npm -g might need a fresh shell; this catches it
+      # in the current install invocation if the bin dir is already wired).
+      if ! command -v srt >/dev/null 2>&1; then
+        echo "npm install completed but 'srt' is still not on PATH." >&2
+        echo "Check \$(npm bin -g) is in your PATH and retry." >&2
+        return 1
+      fi
+    else
+      missing+=("srt")
+    fi
+  fi
 
-  for tool in "$sandbox_tool" jq python3; do
+  for tool in jq python3; do
     command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
   done
   if (( ${#missing[@]} > 0 )); then
     echo "Missing required tools: ${missing[*]}" >&2
-    if [[ "$(uname)" == "Darwin" ]]; then
-      echo "sandbox-exec ships with macOS; jq/python3 via: brew install jq python" >&2
+    if [[ "${missing[*]}" == *"srt"* ]]; then
+      echo "srt needs Node.js + npm. Install npm first, then:" >&2
+      echo "  npm install -g @anthropic-ai/sandbox-runtime" >&2
+    fi
+    if [[ "$(uname 2>/dev/null)" == "Darwin" ]]; then
+      echo "jq/python3 via: brew install jq python" >&2
     else
-      echo "On Debian/Ubuntu: sudo apt install bubblewrap jq python3" >&2
+      echo "jq/python3 via: sudo apt install jq python3" >&2
     fi
     return 1
   fi
@@ -175,6 +215,20 @@ install_hook() {
   printf '%s\n' "$PYTHON_NUDGE_SCRIPT" > "$target"
   chmod 755 "$target"
   echo "Installed: $target"
+}
+
+install_srt_settings() {
+  local cfg_dir="$HOME/.config/jailed"
+  local cfg="$cfg_dir/srt-settings.json"
+  mkdir -p "$cfg_dir"
+  # Never clobber an existing user-edited policy — they may have opened
+  # specific domains or allowed writes for a workflow. Fresh install only.
+  if [[ -f "$cfg" ]]; then
+    echo "Preserved existing: $cfg"
+    return 0
+  fi
+  printf '%s' "$SRT_SETTINGS" > "$cfg"
+  echo "Installed: $cfg"
 }
 
 merge_settings() {
@@ -295,6 +349,7 @@ PY
 run_install() {
   check_deps
   install_bins
+  install_srt_settings
   install_hook
   merge_settings
   upsert_claude_md
