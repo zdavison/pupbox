@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# safe-python installer: sandboxed python3 + Claude Code integration.
+# jailed-python installer: sandboxed python3 + Claude Code integration.
 #
 # Usage:
 #   curl -fsSL <url>/install.sh | bash
@@ -13,13 +13,13 @@
 set -euo pipefail
 
 # -----------------------------------------------------------------------------
-# Embedded assets (kept byte-identical to bin/safe-python + hooks/python-nudge.sh
+# Embedded assets (kept byte-identical to bin/jailed-python + hooks/python-nudge.sh
 # via tests/test_installer.sh).
 # -----------------------------------------------------------------------------
 
-read -r -d '' SAFE_PYTHON_SCRIPT <<'SP_EOF' || true
+read -r -d '' JAILED_PYTHON_SCRIPT <<'JP_EOF' || true
 #!/usr/bin/env bash
-# safe-python: /usr/bin/python3 sandboxed.
+# jailed-python: /usr/bin/python3 sandboxed.
 # - read-only view of the filesystem, no writes outside allowed /dev sinks
 # - no network
 # - Linux: bubblewrap with ephemeral tmpfs for $HOME, /tmp, /run
@@ -60,34 +60,34 @@ exec bwrap \
   --die-with-parent \
   --new-session \
   /usr/bin/python3 "$@"
-SP_EOF
-SAFE_PYTHON_SCRIPT+=$'\n'
+JP_EOF
+JAILED_PYTHON_SCRIPT+=$'\n'
 
-read -r -d '' PYTHON_NUDGE_SCRIPT <<'SP_EOF' || true
+read -r -d '' PYTHON_NUDGE_SCRIPT <<'JP_EOF' || true
 #!/usr/bin/env bash
-# PreToolUse hook: nudge Claude toward safe-python when it tries to run raw python/python3.
+# PreToolUse hook: nudge Claude toward jailed-python when it tries to run raw python/python3.
 # - permissionDecisionReason is shown to the *user* in the approval prompt.
 # - additionalContext is fed back into *Claude's* context so the model itself
-#   learns to prefer safe-python; without this, the reason is invisible to the
+#   learns to prefer jailed-python; without this, the reason is invisible to the
 #   model and Claude keeps re-proposing python3.
 
 input=$(cat)
 cmd=$(echo "$input" | jq -r '.tool_input.command // ""')
 
 # Match python or python3 as a standalone command, anchored to start-of-string or a
-# shell separator. Excludes safe-python, safe-python3, python3.N, pythonX, etc.
+# shell separator. Excludes jailed-python, jailed-python3, python3.N, pythonX, etc.
 if echo "$cmd" | grep -qE '(^|[|&;`]|\$\()[[:space:]]*python3?([[:space:]]|$)'; then
   jq -n '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "ask",
-      permissionDecisionReason: "Prefer safe-python (pre-approved, sandboxed: no network, no filesystem writes) for text processing. Only continue with python3 if you genuinely need network, file writes, subprocess, or full stdlib access.",
-      additionalContext: "safe-python and safe-python3 are pre-approved, sandboxed wrappers around /usr/bin/python3 with no network access and no filesystem writes. Prefer them for text processing in pipelines (stdin->stdout, no side effects). Only reach for raw python3 when you genuinely need network, file writes, subprocess spawning, or packages outside the stdlib."
+      permissionDecisionReason: "Prefer jailed-python (pre-approved, sandboxed: no network, no filesystem writes) for text processing. Only continue with python3 if you genuinely need network, file writes, subprocess, or full stdlib access.",
+      additionalContext: "jailed-python and jailed-python3 are pre-approved, sandboxed wrappers around /usr/bin/python3 with no network access and no filesystem writes. Prefer them for text processing in pipelines (stdin->stdout, no side effects). Only reach for raw python3 when you genuinely need network, file writes, subprocess spawning, or packages outside the stdlib."
     }
   }'
 fi
 exit 0
-SP_EOF
+JP_EOF
 PYTHON_NUDGE_SCRIPT+=$'\n'
 
 # -----------------------------------------------------------------------------
@@ -127,21 +127,30 @@ _maybe_sudo() {
 install_bins() {
   local prefix="${PREFIX:-/usr/local}"
   local bindir="$prefix/bin"
-  local target="$bindir/safe-python"
-  local link="$bindir/safe-python3"
+  local target="$bindir/jailed-python"
+  local link="$bindir/jailed-python3"
 
   _maybe_sudo "$bindir" mkdir -p "$bindir"
 
+  # Clean up binaries from prior renames so upgraders don't end up with
+  # orphaned safe-python alongside the new jailed-python.
+  for legacy in safe-python safe-python3; do
+    if [[ -e "$bindir/$legacy" || -L "$bindir/$legacy" ]]; then
+      _maybe_sudo "$bindir/$legacy" rm -f "$bindir/$legacy"
+      echo "Removed legacy: $bindir/$legacy"
+    fi
+  done
+
   # Write via tee so sudo flows naturally.
-  printf '%s\n' "$SAFE_PYTHON_SCRIPT" | _maybe_sudo "$target" tee "$target" >/dev/null
+  printf '%s\n' "$JAILED_PYTHON_SCRIPT" | _maybe_sudo "$target" tee "$target" >/dev/null
   _maybe_sudo "$target" chmod 755 "$target"
 
-  # safe-python3 -> safe-python (replace existing symlink or file).
+  # jailed-python3 -> jailed-python (replace existing symlink or file).
   _maybe_sudo "$link" rm -f "$link"
-  _maybe_sudo "$link" ln -s safe-python "$link"
+  _maybe_sudo "$link" ln -s jailed-python "$link"
 
   echo "Installed: $target"
-  echo "Installed: $link -> safe-python"
+  echo "Installed: $link -> jailed-python"
 }
 
 install_hook() {
@@ -161,11 +170,24 @@ merge_settings() {
   # One-shot backup.
   [[ -f "$settings.bak" ]] || cp "$settings" "$settings.bak"
 
+  # Strip stale allow rules from prior installs before merging. Without this,
+  # a user upgrading from safe-python would end up with both the legacy rule
+  # and the current jailed-python rule side-by-side.
+  local pruned
+  pruned=$(jq '
+    if .permissions.allow then
+      .permissions.allow |= map(select(
+        . != "Bash(safe-python:*)" and . != "Bash(safe-python3:*)"
+      ))
+    else . end
+  ' "$settings")
+  printf '%s\n' "$pruned" > "$settings"
+
   local patch
   patch=$(cat <<'JSON'
 {
   "permissions": {
-    "allow": ["Bash(safe-python:*)", "Bash(safe-python3:*)"]
+    "allow": ["Bash(jailed-python:*)", "Bash(jailed-python3:*)"]
   },
   "hooks": {
     "PreToolUse": [{
@@ -207,24 +229,26 @@ upsert_claude_md() {
 
   local block
   block=$(cat <<'MD'
-<!-- safe-python:policy:start -->
+<!-- jailed-python:policy:start -->
 ## Python execution policy
 
-- **Default: `safe-python` / `safe-python3`** for text processing in pipelines
-  (e.g. `pup ... | safe-python -c '...'`). Pre-approved, no prompt. Read-only
-  filesystem, no network — ideal for parsing/transforming stdin to stdout.
+- **Default: `jailed-python` / `jailed-python3`** for text processing in
+  pipelines (e.g. `pup ... | jailed-python -c '...'`). Pre-approved, no
+  prompt. Read-only filesystem, no network — ideal for parsing/transforming
+  stdin to stdout.
 - **Escape hatch: `python3`** when you actually need network, file writes,
   subprocess, or real project scripts/tests. Will prompt with a reminder;
   confirm when the need is real.
 
 Decision rule: if the Python code reads stdin and prints to stdout with no
-side effects, use `safe-python`. Otherwise `python3`.
-<!-- safe-python:policy:end -->
+side effects, use `jailed-python`. Otherwise `python3`.
+<!-- jailed-python:policy:end -->
 MD
   )
 
-  # Strip any existing delimited block (current marker *and* the legacy
-  # pupbox:python-policy marker from pre-rename installs), then append fresh.
+  # Strip any existing delimited block. Handles current marker + two legacy
+  # marker generations (safe-python:policy from last rename, pupbox:python-policy
+  # from original) so upgrading installs never leave orphaned blocks.
   local cleaned
   cleaned=$(python3 - "$md" <<'PY'
 import re, sys
@@ -232,6 +256,7 @@ path = sys.argv[1]
 with open(path) as f:
     s = f.read()
 for start, end in (
+    ('jailed-python:policy:start', 'jailed-python:policy:end'),
     ('safe-python:policy:start', 'safe-python:policy:end'),
     ('pupbox:python-policy:start', 'pupbox:python-policy:end'),
 ):
@@ -261,10 +286,10 @@ run_install() {
 
   cat <<'EOF'
 
-safe-python installed.
+jailed-python installed.
 
 Quick test:
-  echo '<a href=x>' | safe-python -c 'import sys; print(sys.stdin.read())'
+  echo '<a href=x>' | jailed-python -c 'import sys; print(sys.stdin.read())'
 
 Restart Claude Code (or run /config) to pick up the new hook and permissions.
 EOF
@@ -274,7 +299,7 @@ usage() {
   cat <<EOF
 Usage: bash install.sh [--uninstall] [--help]
 
-Installs safe-python + safe-python3 wrappers and configures Claude Code
+Installs jailed-python + jailed-python3 wrappers and configures Claude Code
 to prefer them over raw python3.
 
 Options:
@@ -290,7 +315,9 @@ run_uninstall() {
   local prefix="${PREFIX:-/usr/local}"
   local bindir="$prefix/bin"
 
-  for f in safe-python safe-python3; do
+  # Remove current and all legacy-generation binaries so uninstall is total
+  # regardless of which version the user last installed.
+  for f in jailed-python jailed-python3 safe-python safe-python3; do
     if [[ -e "$bindir/$f" || -L "$bindir/$f" ]]; then
       _maybe_sudo "$bindir/$f" rm -f "$bindir/$f"
       echo "Removed: $bindir/$f"
@@ -304,7 +331,10 @@ run_uninstall() {
   if [[ -f "$settings" ]]; then
     jq '
       if .permissions.allow then
-        .permissions.allow |= map(select(. != "Bash(safe-python:*)" and . != "Bash(safe-python3:*)"))
+        .permissions.allow |= map(select(
+          . != "Bash(jailed-python:*)" and . != "Bash(jailed-python3:*)" and
+          . != "Bash(safe-python:*)"   and . != "Bash(safe-python3:*)"
+        ))
       else . end
       | if .hooks.PreToolUse then
           .hooks.PreToolUse |= map(select(
@@ -322,9 +352,10 @@ import re, sys
 path = sys.argv[1]
 with open(path) as f:
     s = f.read()
-# Strip both the current marker and the legacy pupbox:python-policy marker
-# so uninstall is clean whether the user last installed pre- or post-rename.
+# Strip current marker and all legacy marker generations so uninstall is
+# total regardless of when the user last installed.
 for start, end in (
+    ('jailed-python:policy:start', 'jailed-python:policy:end'),
     ('safe-python:policy:start', 'safe-python:policy:end'),
     ('pupbox:python-policy:start', 'pupbox:python-policy:end'),
 ):
@@ -339,7 +370,7 @@ PY
   fi
 
   echo
-  echo "safe-python uninstalled. (Backup at $settings.bak remains if you want to restore.)"
+  echo "jailed-python uninstalled. (Backup at $settings.bak remains if you want to restore.)"
 }
 
 main() {
@@ -351,8 +382,8 @@ main() {
   esac
 }
 
-# If sourced by the test harness (SAFE_PYTHON_LIB_ONLY=1), stop after defining vars
+# If sourced by the test harness (JAILED_PYTHON_LIB_ONLY=1), stop after defining vars
 # — this is how tests call individual functions with overridden HOME/PREFIX.
-if [[ -z "${SAFE_PYTHON_LIB_ONLY:-}" ]]; then
+if [[ -z "${JAILED_PYTHON_LIB_ONLY:-}" ]]; then
   main "$@"
 fi

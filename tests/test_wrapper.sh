@@ -3,7 +3,7 @@ set -u
 cd "$(dirname "$0")/.."
 source tests/lib.sh
 
-WRAPPER="bin/safe-python"
+WRAPPER="bin/jailed-python"
 
 test_case "wrapper passes stdin to python and prints stdout"
 result=$(echo "hello" | bash "$WRAPPER" -c 'import sys; print(sys.stdin.read().strip().upper())')
@@ -22,7 +22,7 @@ assert_contains "$result" "BLOCKED" "network must be blocked"
 assert_not_contains "$result" "UNEXPECTED_SUCCESS" "connect must not succeed"
 
 test_case "wrapper cannot write outside the sandbox"
-marker="/tmp/safe-python-wrapper-test-$$.marker"
+marker="/tmp/jailed-python-wrapper-test-$$.marker"
 rm -f "$marker"
 bash "$WRAPPER" -c "open('$marker', 'w').write('x')" 2>/dev/null || true
 if [[ -e "$marker" ]]; then

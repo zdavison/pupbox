@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# safe-python: /usr/bin/python3 sandboxed.
+# jailed-python: /usr/bin/python3 sandboxed.
 # - read-only view of the filesystem, no writes outside allowed /dev sinks
 # - no network
 # - Linux: bubblewrap with ephemeral tmpfs for $HOME, /tmp, /run

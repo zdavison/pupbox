@@ -1,4 +1,4 @@
-# safe-python
+# jailed-python
 
 A sandboxed Python wrapper that Claude Code can invoke freely as a text
 processor without permission prompts. Runs `/usr/bin/python3` with:
@@ -12,11 +12,11 @@ Under the hood:
 - **macOS:** `sandbox-exec` with a Seatbelt profile that denies `network*` and `file-write*` (except `/dev` sinks). No tmpfs on Darwin, so writes fail outright rather than landing ephemerally — same no-side-effects contract.
 
 Real `python3` still works — it just prompts with a reminder to prefer
-`safe-python` unless you truly need network, file writes, or subprocess.
+`jailed-python` unless you truly need network, file writes, or subprocess.
 
 ## Install
 
-    curl -fsSL https://raw.githubusercontent.com/zdavison/safe-python/main/install.sh | bash
+    curl -fsSL https://raw.githubusercontent.com/zdavison/jailed-python/main/install.sh | bash
 
 Or, if you've cloned the repo:
 
@@ -29,15 +29,18 @@ Requires `jq` and `python3`, plus the platform sandbox primitive:
 
 ## What it changes
 
-- Drops `safe-python` and `safe-python3` into `/usr/local/bin/` (one `sudo` prompt).
+- Drops `jailed-python` and `jailed-python3` into `/usr/local/bin/` (one `sudo` prompt).
 - Writes `~/.claude/hooks/python-nudge.sh`.
 - Merges into `~/.claude/settings.json`:
-  - `permissions.allow` gains `Bash(safe-python:*)` and `Bash(safe-python3:*)`.
+  - `permissions.allow` gains `Bash(jailed-python:*)` and `Bash(jailed-python3:*)`.
   - `hooks.PreToolUse` gains a Bash-matcher hook that runs `python-nudge.sh`.
 - Upserts a `## Python execution policy` section (delimited by HTML comment
   markers) in `~/.claude/CLAUDE.md`.
 
 Original `settings.json` is backed up to `settings.json.bak` on first run.
+If you previously installed under the `safe-python` name, upgrading to this
+version automatically removes the legacy binaries, allow rules, and policy
+block — no manual cleanup needed.
 
 ## Uninstall
 
@@ -45,13 +48,13 @@ Original `settings.json` is backed up to `settings.json.bak` on first run.
 
 ## Verify
 
-    echo '<a href=x>' | safe-python -c '
+    echo '<a href=x>' | jailed-python -c '
     import sys, re
     print(re.search(r"href=(\S+?)>", sys.stdin.read()).group(1))
     '
     # -> x
 
-    safe-python -c 'import socket; socket.socket().connect(("1.1.1.1", 80))'
+    jailed-python -c 'import socket; socket.socket().connect(("1.1.1.1", 80))'
     # -> PermissionError / BlockingIOError
 
 ## Development
