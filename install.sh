@@ -13,21 +13,25 @@
 set -euo pipefail
 
 # -----------------------------------------------------------------------------
-# Embedded assets (kept byte-identical to bin/jailed-python + hooks/python-nudge.sh
-# via tests/test_installer.sh).
+# Embedded assets (kept byte-identical to bin/jailed, bin/jailed-python, and
+# hooks/python-nudge.sh via tests/test_installer.sh).
 # -----------------------------------------------------------------------------
 
-read -r -d '' JAILED_PYTHON_SCRIPT <<'JP_EOF' || true
+read -r -d '' JAILED_SCRIPT <<'JP_EOF' || true
 #!/usr/bin/env bash
-# jailed-python: /usr/bin/python3 sandboxed.
-# - read-only view of the filesystem, no writes outside allowed /dev sinks
-# - no network
+# jailed: run an arbitrary command under a no-network, no-filesystem-write sandbox.
+# Invocation: jailed <cmd> [args...]
 # - Linux: bubblewrap with ephemeral tmpfs for $HOME, /tmp, /run
-# - macOS: sandbox-exec with an equivalent Seatbelt profile.
-#          Writes fail outright instead of landing in a tmpfs — there is no
-#          cheap tmpfs on Darwin, and the no-side-effects contract is the same.
+# - macOS: sandbox-exec with a Seatbelt profile that denies network*
+#          and file-write* (except /dev sinks). No tmpfs on Darwin;
+#          writes fail outright — same no-side-effects contract.
 
 set -u
+
+if (( $# == 0 )); then
+  echo "usage: jailed <cmd> [args...]" >&2
+  exit 2
+fi
 
 if [[ "$(uname)" == "Darwin" ]]; then
   exec sandbox-exec -p '(version 1)
@@ -46,7 +50,7 @@ if [[ "$(uname)" == "Darwin" ]]; then
   (literal "/dev/dtracehelper")
   (regex "^/dev/fd/")
   (regex "^/dev/ttys"))
-(deny network*)' /usr/bin/python3 "$@"
+(deny network*)' "$@"
 fi
 
 exec bwrap \
@@ -59,7 +63,16 @@ exec bwrap \
   --unshare-all \
   --die-with-parent \
   --new-session \
-  /usr/bin/python3 "$@"
+  "$@"
+JP_EOF
+JAILED_SCRIPT+=$'\n'
+
+read -r -d '' JAILED_PYTHON_SCRIPT <<'JP_EOF' || true
+#!/usr/bin/env bash
+# jailed-python: convenience shim for `jailed python3 "$@"`.
+# Kept for direct human use and existing tool integrations. The generic
+# `jailed` binary does all the sandboxing work.
+exec "$(dirname "$0")/jailed" python3 "$@"
 JP_EOF
 JAILED_PYTHON_SCRIPT+=$'\n'
 
@@ -127,6 +140,7 @@ _maybe_sudo() {
 install_bins() {
   local prefix="${PREFIX:-/usr/local}"
   local bindir="$prefix/bin"
+  local jailed_target="$bindir/jailed"
   local target="$bindir/jailed-python"
   local link="$bindir/jailed-python3"
 
@@ -141,6 +155,10 @@ install_bins() {
     fi
   done
 
+  # Install the generic jailed sandbox wrapper first (jailed-python shims to it).
+  printf '%s\n' "$JAILED_SCRIPT" | _maybe_sudo "$jailed_target" tee "$jailed_target" >/dev/null
+  _maybe_sudo "$jailed_target" chmod 755 "$jailed_target"
+
   # Write via tee so sudo flows naturally.
   printf '%s\n' "$JAILED_PYTHON_SCRIPT" | _maybe_sudo "$target" tee "$target" >/dev/null
   _maybe_sudo "$target" chmod 755 "$target"
@@ -149,6 +167,7 @@ install_bins() {
   _maybe_sudo "$link" rm -f "$link"
   _maybe_sudo "$link" ln -s jailed-python "$link"
 
+  echo "Installed: $jailed_target"
   echo "Installed: $target"
   echo "Installed: $link -> jailed-python"
 }
@@ -317,7 +336,7 @@ run_uninstall() {
 
   # Remove current and all legacy-generation binaries so uninstall is total
   # regardless of which version the user last installed.
-  for f in jailed-python jailed-python3 safe-python safe-python3; do
+  for f in jailed jailed-python jailed-python3 safe-python safe-python3; do
     if [[ -e "$bindir/$f" || -L "$bindir/$f" ]]; then
       _maybe_sudo "$bindir/$f" rm -f "$bindir/$f"
       echo "Removed: $bindir/$f"

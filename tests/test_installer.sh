@@ -9,6 +9,11 @@ test_case "install.sh exists and is runnable bash"
 bash -n install.sh
 assert_exit 0 $? "install.sh parses as bash"
 
+test_case "embedded JAILED_SCRIPT matches bin/jailed"
+embedded=$(JAILED_PYTHON_LIB_ONLY=1 bash -c 'source install.sh; printf "%s" "$JAILED_SCRIPT"')
+actual=$(cat bin/jailed)
+assert_eq "$actual" "$embedded" "embedded jailed diverged from bin/jailed"
+
 test_case "embedded JAILED_PYTHON_SCRIPT matches bin/jailed-python"
 embedded=$(JAILED_PYTHON_LIB_ONLY=1 bash -c 'source install.sh; printf "%s" "$JAILED_PYTHON_SCRIPT"')
 actual=$(cat bin/jailed-python)
@@ -33,9 +38,11 @@ out=$(JAILED_PYTHON_LIB_ONLY=1 bash -c 'source install.sh; PATH=/nonexistent che
 assert_contains "$out" "bwrap" "message mentions bwrap"
 assert_contains "$out" "apt" "message includes apt hint"
 
-test_case "install_bins places jailed-python and jailed-python3 under \$PREFIX/bin"
+test_case "install_bins places jailed, jailed-python and jailed-python3 under \$PREFIX/bin"
 tmp=$(make_tmp)
 JAILED_PYTHON_LIB_ONLY=1 bash -c "source install.sh; PREFIX='$tmp' install_bins"
+[[ -x "$tmp/bin/jailed" ]] && assert_eq "ok" "ok" "jailed installed and executable" \
+  || assert_eq "ok" "missing" "jailed not executable or missing"
 [[ -x "$tmp/bin/jailed-python" ]] && assert_eq "ok" "ok" "jailed-python installed and executable" \
   || assert_eq "ok" "missing" "jailed-python not executable or missing"
 [[ -L "$tmp/bin/jailed-python3" || -x "$tmp/bin/jailed-python3" ]] \
@@ -239,6 +246,7 @@ tmp_home=$(make_tmp)
 tmp_prefix=$(make_tmp)
 HOME="$tmp_home" PREFIX="$tmp_prefix" bash install.sh
 assert_exit 0 $? "installer exits 0"
+[[ -x "$tmp_prefix/bin/jailed" ]]         && assert_eq "ok" "ok" "jailed placed"         || assert_eq "ok" "no" "jailed missing"
 [[ -x "$tmp_prefix/bin/jailed-python" ]]  && assert_eq "ok" "ok" "jailed-python placed"   || assert_eq "ok" "no" "jailed-python missing"
 [[ -x "$tmp_prefix/bin/jailed-python3" ]] && assert_eq "ok" "ok" "jailed-python3 placed"  || assert_eq "ok" "no" "jailed-python3 missing"
 [[ -x "$tmp_home/.claude/hooks/python-nudge.sh" ]] && assert_eq "ok" "ok" "hook placed" || assert_eq "ok" "no" "hook missing"
@@ -261,6 +269,7 @@ tmp_prefix=$(make_tmp)
 HOME="$tmp_home" PREFIX="$tmp_prefix" bash install.sh >/dev/null
 HOME="$tmp_home" PREFIX="$tmp_prefix" bash install.sh --uninstall
 assert_exit 0 $? "uninstall exits 0"
+[[ ! -e "$tmp_prefix/bin/jailed" ]]         && assert_eq "ok" "ok" "jailed removed"           || assert_eq "ok" "no" "jailed still present"
 [[ ! -e "$tmp_prefix/bin/jailed-python" ]]  && assert_eq "ok" "ok" "jailed-python removed"   || assert_eq "ok" "no" "jailed-python still present"
 [[ ! -e "$tmp_prefix/bin/jailed-python3" ]] && assert_eq "ok" "ok" "jailed-python3 removed"  || assert_eq "ok" "no" "jailed-python3 still present"
 [[ ! -e "$tmp_home/.claude/hooks/python-nudge.sh" ]] && assert_eq "ok" "ok" "hook removed" || assert_eq "ok" "no" "hook still present"
