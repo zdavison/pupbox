@@ -73,6 +73,20 @@ deny-all (empty `allowWrite`, empty `allowedDomains`). See the
 [SRT docs](https://github.com/anthropic-experimental/sandbox-runtime#configuration)
 if you want to allow specific domains or write paths.
 
+## Escape hatch: `unjailed`
+
+Sometimes you actually *want* `claude` to hit the network or write to disk — e.g. a debugging session where you'll explicitly approve each step. Launch Claude as:
+
+```bash
+unjailed claude
+```
+
+For that session the hook stands down: your listed commands run un-sandboxed, and you get the normal Claude Code permission prompts. Any Claude spawned from within (via the Bash tool) inherits the un-jailed state.
+
+Safety: a jailed Claude can't opt itself out. The hook verifies that `UNJAILED=1` came from a legitimate `unjailed` wrapper above the outermost `claude` process — so `UNJAILED=1 claude -p …` from inside a running Claude fails the check and gets rewritten as usual.
+
+`unjailed` is a no-op for anything that isn't Claude: `unjailed python3 foo.py` just runs `python3 foo.py` with an extra env var nothing else reads.
+
 ## Uninstall
 
     bash install.sh --uninstall
