@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -u
+cd "$(dirname "$0")/.."
+source tests/lib.sh
+
+WRAPPER="bin/jailed"
+
+test_case "jailed passes stdin to the target command and prints stdout"
+result=$(echo "hello" | bash "$WRAPPER" python3 -c 'import sys; print(sys.stdin.read().strip().upper())')
+assert_eq "HELLO" "$result" "uppercase of stdin via jailed python3"
+
+test_case "jailed blocks outbound network for its target command"
+result=$(bash "$WRAPPER" python3 -c '
+import socket
+try:
+    socket.socket().connect(("1.1.1.1", 80))
+    print("UNEXPECTED_SUCCESS")
+except (OSError, PermissionError):
+    print("BLOCKED")
+' 2>&1)
+assert_contains "$result" "BLOCKED" "network must be blocked"
+assert_not_contains "$result" "UNEXPECTED_SUCCESS" "connect must not succeed"
+
+test_case "jailed target cannot write outside the sandbox"
+marker="/tmp/jailed-generic-test-$$.marker"
+rm -f "$marker"
+bash "$WRAPPER" python3 -c "open('$marker', 'w').write('x')" 2>/dev/null || true
+if [[ -e "$marker" ]]; then
+  rm -f "$marker"
+  assert_eq "absent" "present" "sandbox leaked: marker was written to real /tmp"
+else
+  assert_eq "absent" "absent" "real /tmp unaffected by sandboxed write"
+fi
+
+test_case "jailed works with non-python target (jq stdlib example)"
+# jq exists on CI + our dev boxes; use a trivial transform.
+result=$(echo '{"x":1}' | bash "$WRAPPER" jq -c '.x')
+assert_eq "1" "$result" "jailed can run non-python targets"
+
+test_case "jailed forwards exit code from the target"
+bash "$WRAPPER" python3 -c 'import sys; sys.exit(7)' 2>/dev/null
+assert_exit 7 $? "exit code propagated"
+
+summary
