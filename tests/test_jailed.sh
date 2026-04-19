@@ -39,6 +39,7 @@ assert_eq "1" "$result" "jailed can run non-python targets"
 
 test_case "jailed forwards exit code from the target"
 bash "$WRAPPER" python3 -c 'import sys; sys.exit(7)' 2>/dev/null
-assert_exit 7 $? "exit code propagated"
+rc=$?
+assert_exit 7 "$rc" "exit code propagated"
 
 summary
