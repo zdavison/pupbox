@@ -156,7 +156,9 @@ def lookup_ps(pid):
     ppid, comm = parts
     # On Linux, `comm` can include a leading path or brackets; basename
     # is good enough for our targets ("claude", "unjailed"). macOS BSD
-    # `ps` prints just the basename already.
+    # `ps` prints just the basename already. Linux truncates `comm` to
+    # 15 chars — "claude" (6) and "unjailed" (8) are both well under that
+    # limit; any future target name must stay <= 15 chars too.
     comm = os.path.basename(comm.strip())
     try:
         return int(ppid), comm

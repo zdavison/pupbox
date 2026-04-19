@@ -11,7 +11,7 @@ Rename history: `pupbox` → `safe-python` → `jailed-python` → current gener
 ## Common commands
 
 ```bash
-bash tests/run-all.sh              # run full test suite (4 files)
+bash tests/run-all.sh              # run full test suite (5 files)
 bash tests/test_jailed.sh          # one file at a time
 bash install.sh --help             # installer CLI
 HOME=/tmp/h PREFIX=/tmp/p bash install.sh           # sandboxed install for manual checks
@@ -50,6 +50,7 @@ Four user-visible artifacts + an installer that stitches them into Claude Code:
 - **`test_hook.sh`** exercises the rewriter purely as a string-transformer — runs anywhere with `bash`/`jq`/`python3`.
 - **`test_installer.sh`** exercises individual installer functions in sandboxed HOME/PREFIX — no `srt` needed for most assertions (except the "installed wrapper still functions" case which sets `JAILED_SRT_SETTINGS` to the repo's config file explicitly).
 - **`test_e2e.sh`** does a full install + invokes the installed binary + feeds JSON through the installed hook. Needs `srt`.
+- **`test_unjailed.sh`** exercises `bin/unjailed` and the hook's `UNJAILED` trust check. Ancestry-walk cases use `JAILED_ANCESTRY_FIXTURE` to inject a synthetic process tree; two real-`ps` smoke tests also run. No `srt` needed.
 - Migration tests (seeded legacy state → install/uninstall → assert clean) live in `test_installer.sh`; keep one per legacy generation. They use old marker/binary names *intentionally* — don't "clean them up" into current names.
 
 ## Settings.json merge semantics
