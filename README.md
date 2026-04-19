@@ -1,10 +1,10 @@
 # jailed
 
-A generic command sandbox plus a Claude Code integration that routes
-listed commands (e.g. `python3`, `jq`, `awk`) through it transparently.
-When Claude proposes `python3 -c '…'`, a PreToolUse hook rewrites the
-tool input to `jailed python3 -c '…'` before Bash executes — no approval
-prompt, no retries, no side effects.
+A simple command sandbox, just prefix with `jailed` to sandbox.
+
+Built for `claude`, and on install will configure a `PreToolUse` hook that will automatically prefix uses of common inline scripting tools with `jailed`.
+
+`jailed` commands are also automatically added to your approval whitelist, so you don't need to approve tool use requests for `jailed` commands.
 
 ## What `jailed` does
 
@@ -17,7 +17,7 @@ Invoked as `jailed <cmd> [args…]`. Runs the target command under
 
 SRT abstracts the platform sandbox primitive — `bubblewrap` on Linux,
 `sandbox-exec` on macOS — so the same `jailed <cmd>` contract holds on
-both OSes. We configure SRT; we don't re-implement the sandbox.
+both OSes.
 
 ## Why?
 
@@ -33,10 +33,6 @@ The general idea is that you won't be prompted for permissions for anything that
 
     curl -fsSL https://raw.githubusercontent.com/zdavison/jailed/main/install.sh | bash
 
-Or, if you've cloned the repo:
-
-    bash install.sh
-
 Requires `jq` and `python3`. The installer will `npm install -g @anthropic-ai/sandbox-runtime`
 automatically if `srt` isn't already on your PATH (needs Node.js + npm).
 
@@ -45,7 +41,7 @@ automatically if `srt` isn't already on your PATH (needs Node.js + npm).
 
 ## What the installer does
 
-- Drops `jailed`, `jailed-python`, `jailed-python3` into `$PREFIX/bin/` (one `sudo` prompt). `jailed-python*` are convenience shims for `jailed python3`.
+- Drops `jailed`, into `$PREFIX/bin/` (one `sudo` prompt).
 - Writes `~/.claude/hooks/jailed-hook.sh` (the rewriting PreToolUse hook).
 - Writes `~/.config/jailed/commands` **only if absent** — the default list of commands to auto-jail. Your edits survive re-installs.
 - Writes `~/.config/jailed/srt-settings.json` **only if absent** — SRT's policy file (deny-all by default).
@@ -95,5 +91,3 @@ Removes binaries, hook, and allow rules / hook registration from `settings.json`
 ## Known issues
 
 **Rewrite limitations:** the hook uses regex at shell-token boundaries. It does *not* rewrite `env FOO=bar python3 …` (command is not at a boundary) or occurrences embedded in single-quoted strings that themselves contain shell separators (e.g. `echo ';python3'`). Both edge cases are rare in Claude's typical usage; workaround is to invoke `jailed <cmd>` directly, or remove the command from `~/.config/jailed/commands`.
-
-**SRT is a research preview.** API and config format may evolve. If SRT goes away, we can swap the wrapper for another backend without changing the hook or Claude-facing surface.
