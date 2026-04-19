@@ -38,5 +38,12 @@ else
   fi
 fi
 
+# Announce to stderr so users can see jailed was used (Claude Code's TUI
+# shows the command Claude *proposed*, not the hook-rewritten one, so
+# without this banner a silent sandbox rewrite would be invisible).
+# $1 is just the target command name; the hook-rewritten tool-call still
+# shows the full argv in Claude Code.
+echo "[jailed] $1" >&2
+
 escaped=$(printf '%q ' "$@")
 exec srt -s "$settings" -c "$escaped"
