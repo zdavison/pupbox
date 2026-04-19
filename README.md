@@ -1,6 +1,12 @@
+<img width="1024" height="1024" alt="image" src="https://github.com/user-attachments/assets/6ee10a7b-576b-4e9d-9891-92155a119af6" />
+
 # jailed
 
 A simple command sandbox, just prefix with `jailed` to sandbox.
+
+```bash
+echo '<a href=x>' | jailed python3 -c 'import sys; print(sys.stdin.read())'
+```
 
 Built for `claude`, and on install will configure a `PreToolUse` hook that will automatically prefix uses of common inline scripting tools with `jailed`.
 
@@ -25,7 +31,7 @@ I originally wrote Claude to support an unattended workflow for [pup](https://gi
 
 When telling `claude` to investigate an issue with `pup`, it would pipe all output to `python3` to format the API responses, and repeatedly ask me to approve permissions.
 
-I wasn't comfortable with adding a scripting environment (`python3`) to the permanent allowlist, so instead I wrote `jailed`.
+I wasn't comfortable with adding a Turing complete scripting environment (`python3`) to the permanent allowlist, so instead I wrote `jailed`.
 
 The general idea is that you won't be prompted for permissions for anything thats jailed, because it should be relatively safe.
 
